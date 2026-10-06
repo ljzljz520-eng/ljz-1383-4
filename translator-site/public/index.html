@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>林译 · 自由译者</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="site">
+  <div class="brand">林译<span>freelance translator · EN/JA ⇄ ZH</span></div>
+  <nav><a href="/index.html">案例</a><a href="/submit.html">委托估价</a><a href="/admin.html">译者后台</a></nav>
+</header>
+<main>
+  <section class="hero">
+    <h1>按语言与领域浏览真实译例</h1>
+    <p>每个案例标注我的实际角色与难点；源文 / 译文 / 对照批注分别授权，仅公开内容会进入搜索与下载包。</p>
+  </section>
+  <section class="filters">
+    <select id="f-lang"><option value="">全部语言对</option></select>
+    <select id="f-domain"><option value="">全部领域</option></select>
+    <input id="f-q" type="text" placeholder="搜索公开内容（标题 / 摘要 / 公开素材）…" style="flex:1;min-width:220px">
+    <button id="f-go">搜索</button>
+  </section>
+  <section id="cards" class="cards"></section>
+  <p id="empty" class="mut" hidden>没有匹配的案例。</p>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+let all = [];
+async function load() {
+  const r = await fetch('/api/cases'); const d = await r.json();
+  all = d.cases;
+  for (const v of [...new Set(all.map(c => c.langPair))]) $('#f-lang').insertAdjacentHTML('beforeend', `<option>${v}</option>`);
+  for (const v of [...new Set(all.map(c => c.domain))]) $('#f-domain').insertAdjacentHTML('beforeend', `<option>${v}</option>`);
+  render(all);
+}
+function card(c) {
+  return `<a class="card" href="/case.html?slug=${encodeURIComponent(c.slug)}">
+    <div class="badges"><span class="badge lang">${c.langPair}</span><span class="badge">${c.domain}</span></div>
+    <h3>${c.title}</h3><p>${c.summary}</p></a>`;
+}
+function render(list) {
+  $('#cards').innerHTML = list.map(card).join('');
+  $('#empty').hidden = list.length > 0;
+}
+async function apply() {
+  const p = new URLSearchParams();
+  if ($('#f-lang').value) p.set('langPair', $('#f-lang').value);
+  if ($('#f-domain').value) p.set('domain', $('#f-domain').value);
+  if ($('#f-q').value.trim()) p.set('q', $('#f-q').value.trim());
+  const r = await fetch('/api/cases?' + p); const d = await r.json();
+  render(d.cases);
+}
+$('#f-go').onclick = apply;
+$('#f-q').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+$('#f-lang').onchange = apply; $('#f-domain').onchange = apply;
+load();
+</script>
+</body>
+</html>

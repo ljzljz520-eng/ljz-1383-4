@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案例详情 · 林译</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="site">
+  <div class="brand">林译<span>freelance translator</span></div>
+  <nav><a href="/index.html">案例</a><a href="/submit.html">委托估价</a><a href="/admin.html">译者后台</a></nav>
+</header>
+<main id="main"><p class="mut">加载中…</p></main>
+<script>
+const KIND = { source: '源文', translation: '译文', annotations: '对照批注' };
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function load() {
+  const slug = new URLSearchParams(location.search).get('slug');
+  const r = await fetch('/api/cases/' + encodeURIComponent(slug));
+  const main = document.getElementById('main');
+  if (r.status === 404) { main.innerHTML = '<div class="notice warn">该案例已撤下或不存在。</div>'; return; }
+  const c = await r.json();
+  const assets = c.assets.map(a => a.locked
+    ? `<h3>${KIND[a.kind]}</h3><div class="locked">🔒 许可受限（${a.license}）：本素材不公开，不会进入搜索索引与下载包。</div>`
+    : `<h3>${KIND[a.kind]} <span class="badge ok">${a.license}</span></h3><pre>${esc(a.content)}</pre>`).join('');
+  main.innerHTML = `
+    <div class="badges"><span class="badge lang">${c.langPair}</span><span class="badge">${c.domain}</span></div>
+    <h1>${esc(c.title)}</h1>
+    <div class="panel"><h3>项目摘要</h3><p>${esc(c.summary)}</p></div>
+    <div class="grid2">
+      <div class="panel"><h3>我的角色</h3><p>${esc(c.role)}</p></div>
+      <div class="panel"><h3>难点</h3><p>${esc(c.challenges)}</p></div>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">案例素材</h2>
+        <a href="/api/cases/${encodeURIComponent(c.slug)}/download"><button class="ghost">下载公开素材包 (.tar)</button></a>
+      </div>
+      <p class="mut small">源文 / 译文 / 对照批注分别授权；下载包内附 MANIFEST.json 说明包含与排除项。</p>
+      ${assets}
+    </div>`;
+}
+load();
+</script>
+</body>
+</html>

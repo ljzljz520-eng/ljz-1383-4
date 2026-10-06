@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>译者后台 · 林译</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="site">
+  <div class="brand">林译<span>译者后台</span></div>
+  <nav><a href="/index.html">案例</a><a href="/submit.html">委托估价</a><a href="/admin.html">译者后台</a></nav>
+</header>
+<main>
+  <div class="panel">
+    <label>译者令牌（ADMIN_TOKEN）</label>
+    <div class="row"><input id="tok" type="text" style="flex:1" placeholder="默认开发令牌 dev-admin-token"><button id="save-tok">保存</button></div>
+    <p class="mut small">材料仅向必要参与者开放：译者本人、委托客户、持限时材料链接的参与者。审计日志不含正文。</p>
+  </div>
+  <div id="app" hidden>
+    <h2>委托</h2><div id="inquiries"></div>
+    <h2>案例管理</h2>
+    <div class="panel">
+      <h3>新建案例</h3>
+      <div class="grid2">
+        <div>
+          <label>slug *</label><input id="c-slug" type="text" style="width:100%">
+          <label>标题 *</label><input id="c-title" type="text" style="width:100%">
+          <label>语言对 *</label><select id="c-lang" style="width:100%"><option>en>zh</option><option>zh>en</option><option>ja>zh</option><option>en>ja</option></select>
+          <label>领域</label><input id="c-domain" type="text" style="width:100%" value="法律">
+        </div>
+        <div>
+          <label>摘要 *</label><textarea id="c-summary"></textarea>
+          <label>我的角色</label><textarea id="c-role" style="min-height:60px"></textarea>
+          <label>难点</label><textarea id="c-challenges" style="min-height:60px"></textarea>
+        </div>
+      </div>
+      <label>素材（JSON 数组，kind: source/translation/annotations，license: public/restricted）</label>
+      <textarea id="c-assets" style="min-height:90px">[{"kind":"source","license":"restricted","content":"..."},{"kind":"translation","license":"public","content":"..."},{"kind":"annotations","license":"public","content":"..."}]</textarea>
+      <div class="row" style="margin-top:8px"><button id="c-create">创建案例</button><span id="c-msg" class="small"></span></div>
+    </div>
+    <div id="cases"></div>
+    <h2>附件保留策略</h2>
+    <div class="panel">
+      <div class="row"><button id="r-verify" class="ghost">查看保留状态</button><button id="r-sweep" class="ghost">执行到期清除</button></div>
+      <pre id="r-out" class="small"></pre>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let tok = localStorage.getItem('adm') || '';
+$('#tok').value = tok;
+const H = () => ({ authorization: 'Bearer ' + tok, 'content-type': 'application/json' });
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: H(), body: body ? JSON.stringify(body) : undefined });
+  return { status: r.status, data: await r.json() };
+}
+$('#save-tok').onclick = () => { tok = $('#tok').value.trim(); localStorage.setItem('adm', tok); boot(); };
+
+async function boot() {
+  const { status, data } = await api('GET', '/api/admin/inquiries');
+  if (status !== 200) { $('#app').hidden = true; return; }
+  $('#app').hidden = false;
+  renderInquiries(data.inquiries);
+  const cs = await api('GET', '/api/admin/cases');
+  renderCases(cs.data.cases);
+}
+
+function renderInquiries(list) {
+  $('#inquiries').innerHTML = list.map(i => `<div class="panel">
+    <div class="badges"><span class="badge lang">${i.langPair}</span><span class="badge">${i.domain}</span>
+      <span class="badge warn">${i.confidentiality}</span><span class="badge">${i.materialLicense}</span>
+      <span class="badge">${i.status}</span><span class="badge">修订 #${i.currentRevision}</span></div>
+    <b>${i.id}</b> · ${esc(i.contact)} · 申报 ${i.declaredWords} 字
+    <p class="mut small">${esc(i.summary)}</p>
+    ${i.quotes.length ? `<table><thead><tr><th>版本</th><th>修订</th><th>字数</th><th>金额</th><th>状态</th></tr></thead>
+      <tbody>${i.quotes.map(q => `<tr><td>v${q.version}</td><td>${q.revision}</td><td>${q.words}</td><td>¥${q.amount}</td><td>${q.status}</td></tr>`).join('')}</tbody></table>` : '<p class="mut small">暂无报价</p>'}
+    ${i.attachments.length ? `<p class="small mut">附件：${i.attachments.map(a => `#${a.revision} ${esc(a.filename)} [${a.state}]`).join('；')}</p>` : ''}
+    <div class="row">
+      <button class="ghost" onclick="newQuote('${i.id}')">新建报价版本</button>
+      <button class="ghost" onclick="matLink('${i.id}')">签发材料链接</button>
+      <button class="ghost" onclick="cancelInq('${i.id}')">取消委托</button>
+    </div><span class="small" id="m-${i.id}"></span></div>`).join('') || '<p class="mut">暂无委托</p>';
+}
+
+window.newQuote = async (id) => {
+  const words = prompt('计费字数（留空按当前附件）'); const amount = prompt('金额（留空按单价计算）');
+  const body = {}; if (words) body.words = Number(words); if (amount) body.amount = Number(amount);
+  const { status, data } = await api('POST', `/api/admin/inquiries/${id}/quotes`, body);
+  document.getElementById('m-' + id).textContent = status === 201 ? `已创建 v${data.quote.version}` : `失败：${data.error}`;
+  if (status === 201) boot();
+};
+window.matLink = async (id) => {
+  const min = prompt('有效期（分钟）', '60');
+  const { status, data } = await api('POST', `/api/admin/inquiries/${id}/material-links`, { ttlMs: Number(min) * 60000 });
+  document.getElementById('m-' + id).textContent = status === 201 ? `材料链接：${data.url}（至 ${data.expiresAt}）` : `失败：${data.error}`;
+};
+window.cancelInq = async (id) => {
+  const { status, data } = await api('POST', `/api/inquiries/${id}/cancel`);
+  document.getElementById('m-' + id).textContent = status === 200 ? '已取消，附件进入保留期' : `失败：${data.error}`;
+  if (status === 200) boot();
+};
+
+function renderCases(list) {
+  $('#cases').innerHTML = list.map(c => `<div class="panel">
+    <div class="badges"><span class="badge lang">${c.langPair}</span><span class="badge">${c.domain}</span>
+      <span class="badge ${c.status === 'published' ? 'ok' : 'bad'}">${c.status}</span>
+      ${c.assets.map(a => `<span class="badge">${a.kind}:${a.license}</span>`).join('')}</div>
+    <b>${esc(c.title)}</b> <span class="mut small">/${c.slug}</span>
+    <div class="row" style="margin-top:6px">${c.status === 'published' ? `<button class="ghost" onclick="unpub('${c.slug}')">撤下案例</button>` : ''}</div>
+  </div>`).join('') || '<p class="mut">暂无案例</p>';
+}
+window.unpub = async (slug) => {
+  const { status } = await api('POST', `/api/admin/cases/${slug}/unpublish`);
+  if (status === 200) boot();
+};
+
+$('#c-create').onclick = async () => {
+  let assets; try { assets = JSON.parse($('#c-assets').value); } catch { $('#c-msg').textContent = '素材 JSON 解析失败'; return; }
+  const body = { slug: $('#c-slug').value.trim(), title: $('#c-title').value.trim(), langPair: $('#c-lang').value,
+    domain: $('#c-domain').value.trim(), summary: $('#c-summary').value.trim(), role: $('#c-role').value.trim(),
+    challenges: $('#c-challenges').value.trim(), assets };
+  const { status, data } = await api('POST', '/api/admin/cases', body);
+  $('#c-msg').textContent = status === 201 ? '已创建' : `失败：${data.error}`;
+  if (status === 201) boot();
+};
+
+$('#r-verify').onclick = async () => { const { data } = await api('GET', '/api/admin/retention/verify'); $('#r-out').textContent = JSON.stringify(data, null, 2); };
+$('#r-sweep').onclick = async () => { const { data } = await api('POST', '/api/admin/retention/sweep', {}); $('#r-out').textContent = JSON.stringify(data, null, 2); };
+
+boot();
+</script>
+</body>
+</html>

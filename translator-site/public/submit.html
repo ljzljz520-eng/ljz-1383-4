@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>委托估价 · 林译</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="site">
+  <div class="brand">林译<span>freelance translator</span></div>
+  <nav><a href="/index.html">案例</a><a href="/submit.html">委托估价</a><a href="/admin.html">译者后台</a></nav>
+</header>
+<main>
+  <h1>两阶段委托估价</h1>
+  <div class="steps">
+    <div class="step" id="st1">① 提交摘要 → 预估询价（不接收原文）</div>
+    <div class="step" id="st2">② 受限附件 → 正式评估</div>
+    <div class="step" id="st3">③ 确认明确版本 → 两阶段交接</div>
+  </div>
+
+  <section class="panel" id="phase1">
+    <h2>第一阶段 · 项目摘要</h2>
+    <p class="mut small">本阶段不上传原文。保密级别与素材授权将随委托持久保存。</p>
+    <div class="grid2">
+      <div>
+        <label>联系方式（邮箱）*</label><input id="contact" type="text" style="width:100%">
+        <label>语言对 *</label>
+        <select id="langPair" style="width:100%"><option>en>zh</option><option>zh>en</option><option>ja>zh</option><option>en>ja</option></select>
+        <label>领域</label>
+        <select id="domain" style="width:100%"><option>法律</option><option>医疗</option><option>游戏</option><option>文学</option><option>技术</option><option>其他</option></select>
+        <label>申报字数（预估依据）*</label><input id="declaredWords" type="number" min="1" value="5000" style="width:100%">
+      </div>
+      <div>
+        <label>保密级别 *</label>
+        <select id="confidentiality" style="width:100%">
+          <option value="standard">standard · 常规</option>
+          <option value="confidential" selected>confidential · 保密</option>
+          <option value="strict">strict · 严格保密</option>
+        </select>
+        <label>素材授权 *</label>
+        <select id="materialLicense" style="width:100%">
+          <option value="review_only" selected>review_only · 仅用于评估</option>
+          <option value="handoff_on_approval">handoff_on_approval · 确认报价后转入工作</option>
+        </select>
+        <label>项目摘要 *（请勿粘贴原文）</label>
+        <textarea id="summary" placeholder="题材、用途、交期、特殊要求…"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px"><button id="btn-estimate">获取预估价</button><span id="err1" class="small" style="color:var(--bad)"></span></div>
+  </section>
+
+  <section class="panel" id="estimate-panel" hidden>
+    <h2>预估结果</h2>
+    <div id="estimate-box"></div>
+    <h3>预估询价 vs 正式评估</h3>
+    <table id="cmp"><thead><tr><th></th><th>第一阶段 · 预估</th><th>第二阶段 · 正式评估</th></tr></thead><tbody></tbody></table>
+    <div class="row" style="margin-top:12px"><button id="btn-upload-link">进入第二阶段：生成受限上传链接</button></div>
+  </section>
+
+  <section class="panel" id="phase2" hidden>
+    <h2>第二阶段 · 受限附件</h2>
+    <p class="mut small" id="link-info"></p>
+    <div class="notice warn small">仅接受固定格式：<b>.txt / .md</b>（纯文本）或 <b>.align.txt</b>（SRC&gt; / TGT&gt; 对照）。附件一经修订，既有报价自动失效，不会继续适用。</div>
+    <input type="file" id="file">
+    <div id="stats-box"></div>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let ctx = JSON.parse(localStorage.getItem('inq') || 'null');
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  return { status: r.status, data: await r.json() };
+}
+
+$('#btn-estimate').onclick = async () => {
+  $('#err1').textContent = '';
+  const body = {
+    contact: $('#contact').value.trim(), langPair: $('#langPair').value, domain: $('#domain').value,
+    declaredWords: Number($('#declaredWords').value), confidentiality: $('#confidentiality').value,
+    materialLicense: $('#materialLicense').value, summary: $('#summary').value.trim(),
+  };
+  const { status, data } = await post('/api/inquiries', body);
+  if (status !== 201) { $('#err1').textContent = data.error || '提交失败'; return; }
+  ctx = { inquiryId: data.inquiryId, clientToken: data.clientToken };
+  localStorage.setItem('inq', JSON.stringify(ctx));
+  const e = data.estimate;
+  $('#estimate-box').innerHTML = `<div class="notice ok">预估区间：<b>¥${e.amountLow} ~ ¥${e.amountHigh}</b>（单价 ¥${e.ratePerUnit}/计费单位）<br><span class="small">准确度：${esc(e.accuracy)}</span></div>`;
+  const cmp = await (await fetch('/api/flow-comparison')).json();
+  const rows = [['input','输入'],['accuracy','估算准确度'],['confidentiality','保密'],['storageCost','存储成本']];
+  $('#cmp tbody').innerHTML = rows.map(([k, n]) => `<tr><td>${n}</td><td>${esc(cmp.phase1_estimate[k])}</td><td>${esc(cmp.phase2_formal[k])}</td></tr>`).join('');
+  $('#estimate-panel').hidden = false;
+  $('#st1').classList.add('on');
+  $('#estimate-panel').scrollIntoView({ behavior: 'smooth' });
+};
+
+$('#btn-upload-link').onclick = async () => {
+  const { status, data } = await post(`/api/inquiries/${ctx.inquiryId}/upload-link?token=${ctx.clientToken}`);
+  if (status !== 201) { alert(data.error); return; }
+  ctx.uploadToken = data.token;
+  localStorage.setItem('inq', JSON.stringify(ctx));
+  $('#link-info').textContent = `受限上传链接已生成（30 分钟有效，过期即失效）：${data.uploadUrl}`;
+  $('#phase2').hidden = false;
+  $('#st2').classList.add('on');
+};
+
+$('#file').onchange = async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const content = await f.text();
+  const { status, data } = await post(`/api/inquiries/${ctx.inquiryId}/attachments?token=${ctx.uploadToken}`, { filename: f.name, content });
+  if (status !== 201) { $('#stats-box').innerHTML = `<div class="notice bad">上传被拒：${esc(data.error)} ${esc(data.message || '')}</div>`; return; }
+  const s = data.stats, q = data.quote;
+  $('#stats-box').innerHTML = `<div class="panel" style="background:var(--panel2)">
+    <h3>解析与计费口径</h3>
+    <table><tbody>
+      <tr><td>格式</td><td>${s.format}</td><td>源文句段</td><td>${s.totalSegments}（唯一 ${s.uniqueSegments}，重复 ${s.repeatedSegments}）</td></tr>
+      <tr><td>总单位</td><td>${s.totalUnits}</td><td>重复抵扣</td><td>-${s.repeatedUnits}</td></tr>
+      <tr><td><b>计费字数</b></td><td><b>${s.billableUnits}</b></td><td>正式报价 v${q.version}</td><td><b>¥${q.amount}</b>（修订 ${q.revision}）</td></tr>
+    </tbody></table>
+    <a href="/quote.html?inquiry=${ctx.inquiryId}&token=${ctx.clientToken}"><button>前往报价页，确认明确版本 →</button></a>
+  </div>`;
+  $('#st3').classList.add('on');
+};
+</script>
+</body>
+</html>

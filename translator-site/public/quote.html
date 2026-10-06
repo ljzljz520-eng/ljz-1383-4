@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>报价确认 · 林译</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="site">
+  <div class="brand">林译<span>freelance translator</span></div>
+  <nav><a href="/index.html">案例</a><a href="/submit.html">委托估价</a><a href="/admin.html">译者后台</a></nav>
+</header>
+<main id="main"><p class="mut">加载中…</p></main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const P = new URLSearchParams(location.search);
+const inquiryId = P.get('inquiry'), token = P.get('token');
+const STATUS = { sent: ['可确认', 'ok'], stale: ['已失效（附件已修订）', 'bad'], superseded: ['已被新版本取代', 'warn'], approved: ['已确认', 'ok'] };
+const PHASE = { materials_transferred: '第一阶段：物料已交接', delivered: '第二阶段：译文已交付', accepted: '第二阶段：已验收' };
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  return { status: r.status, data: await r.json() };
+}
+
+async function load() {
+  const r = await fetch(`/api/inquiries/${inquiryId}?token=${token}`);
+  const main = $('#main');
+  if (!r.ok) { main.innerHTML = `<div class="notice bad">无法访问（${r.status}）：链接无效或已过期。</div>`; return; }
+  const d = await r.json();
+  const q = d.inquiry;
+  const quotes = d.quotes.map(x => {
+    const [label, cls] = STATUS[x.status] || [x.status, ''];
+    const radio = x.status === 'sent' && !q.approvedQuoteId ? `<input type="radio" name="qv" value="${x.id}" data-version="${x.version}">` : '';
+    return `<tr><td>${radio}</td><td>v${x.version}</td><td>${x.revision}</td><td>${x.words}</td><td>¥${x.amount}</td><td><span class="badge ${cls}">${label}</span></td></tr>`;
+  }).join('');
+  const h = d.handoff;
+  const handoffHtml = h ? `<div class="panel"><h3>两阶段交接</h3>
+      <div class="notice ok">${PHASE[h.phase]}</div>
+      <table><tbody>${h.events.map(e => `<tr><td>${e.phase}</td><td>${e.at}</td><td>${e.actor}</td></tr>`).join('')}</tbody></table>
+      ${h.phase === 'delivered' ? '<button id="btn-accept">确认验收</button>' : ''}
+    </div>` : '';
+  main.innerHTML = `
+    <h1>委托 ${q.id}</h1>
+    <div class="badges"><span class="badge lang">${q.langPair}</span><span class="badge">${q.domain}</span>
+      <span class="badge warn">保密：${q.confidentiality}</span><span class="badge">素材授权：${q.materialLicense}</span>
+      <span class="badge">状态：${q.status}</span></div>
+    <div class="panel"><h3>项目摘要</h3><p>${esc(q.summary)}</p>
+      <p class="mut small">申报字数 ${q.declaredWords} · 当前附件修订 #${q.currentRevision}</p></div>
+    <div class="panel"><h3>报价版本</h3>
+      <p class="mut small">确认对象为明确版本：只有“可确认”且基于当前附件修订的版本能被批准；附件修订后旧版本自动失效。</p>
+      <table><thead><tr><th></th><th>版本</th><th>基于修订</th><th>计费字数</th><th>金额</th><th>状态</th></tr></thead><tbody>${quotes || '<tr><td colspan=6 class="mut">尚无正式报价</td></tr>'}</tbody></table>
+      <div class="row" style="margin-top:10px">
+        <button id="btn-approve" ${q.approvedQuoteId ? 'disabled' : ''}>确认所选版本</button>
+        <span id="msg" class="small"></span>
+      </div></div>
+    ${handoffHtml}
+    <div class="panel"><h3>取消委托</h3>
+      <p class="mut small">取消后附件进入 ${'30'} 天保留期，到期清除并留存可核验的 sha256 墓碑记录。</p>
+      <button class="danger" id="btn-cancel" ${q.status === 'cancelled' ? 'disabled' : ''}>取消委托</button>
+      <span id="cancel-msg" class="small"></span></div>`;
+  $('#btn-approve')?.addEventListener('click', async () => {
+    const sel = document.querySelector('input[name=qv]:checked');
+    if (!sel) { $('#msg').textContent = '请先选择一个可确认的明确版本'; return; }
+    const { status, data } = await post(`/api/quotes/${sel.value}/approve?token=${token}`, { version: Number(sel.dataset.version) });
+    $('#msg').textContent = status === 200 ? '已确认，进入交接流程。' : `被拒（${status}）：${data.error}`;
+    if (status === 200) setTimeout(load, 600);
+  });
+  $('#btn-accept')?.addEventListener('click', async () => {
+    const { status, data } = await post(`/api/handoffs/${h.id}/accept?token=${token}`);
+    if (status === 200) load(); else alert(data.error);
+  });
+  $('#btn-cancel')?.addEventListener('click', async () => {
+    if (!confirm('确认取消委托？附件将进入保留期后清除。')) return;
+    const { status, data } = await post(`/api/inquiries/${inquiryId}/cancel?token=${token}`);
+    $('#cancel-msg').textContent = status === 200 ? `已取消。附件保留至 ${data.attachments.map(a => a.purgeAfter).join(', ') || '—'}` : `失败：${data.error}`;
+  });
+}
+load();
+</script>
+</body>
+</html>

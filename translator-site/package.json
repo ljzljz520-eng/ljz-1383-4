@@ -1,0 +1,13 @@
+{
+  "name": "translator-portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "自由译者作品站 + 两阶段委托估价平台（零依赖 Node.js）",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "seed": "node src/seed.js",
+    "test": "node --test test/"
+  },
+  "engines": { "node": ">=18" }
+}
