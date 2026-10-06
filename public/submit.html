@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>提交项目 · 李译然</title>
+<style>
+  :root { --ink:#1f2933; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink); background:#fafafa; }
+  .wrap { max-width:860px; margin:0 auto; padding:24px; }
+  h1 { font-size:22px; } h2 { font-size:17px; margin:0 0 12px; }
+  .step { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px; margin:16px 0; }
+  .step.off { opacity:.45; pointer-events:none; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input,select,textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; }
+  textarea { min-height:90px; }
+  .btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 18px; font-size:14px; cursor:pointer; margin-top:12px; }
+  .btn.gray { background:#6b7280; } .btn.red { background:#b91c1c; }
+  .out { background:#f0fdfa; border:1px solid #99f6e4; border-radius:8px; padding:12px 14px; margin-top:12px; font-size:14px; white-space:pre-wrap; word-break:break-all; }
+  .err { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13.5px; }
+  th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#f8fafc; }
+  .token { font-family:ui-monospace,monospace; font-size:12.5px; }
+  .warn { color:var(--warn); font-size:13px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>提交项目摘要</h1>
+  <p><a href="/">← 返回作品页</a> ｜ 流程：① 摘要+预估询价（不传原文）→ ② 受限附件+正式评估 → ③ 确认明确版本的报价</p>
+
+  <div class="step" id="s1">
+    <h2>① 项目摘要（阶段一：不接收原文）</h2>
+    <label>邮箱</label><input id="email" type="email" placeholder="you@example.com">
+    <label>语言对</label>
+    <select id="pair"><option value="zh-en">中 → 英</option><option value="en-zh">英 → 中</option><option value="ja-zh">日 → 中</option><option value="en-ja">英 → 日</option></select>
+    <label>领域</label>
+    <select id="domain"><option value="general">通用</option><option value="medical">医疗</option><option value="legal">法律</option><option value="marketing">营销</option><option value="tech">技术</option></select>
+    <label>保密级别</label>
+    <select id="conf"><option value="public">可公开</option><option value="confidential" selected>保密</option><option value="secret">高度保密</option></select>
+    <label>自报字数（用于预估，正式报价以附件解析为准）</label><input id="units" type="number" value="5000" min="1">
+    <label>项目摘要（公开范围仅用于沟通，不会进入搜索索引）</label>
+    <textarea id="summary" placeholder="项目背景、用途、交期等"></textarea>
+    <button class="btn" onclick="createInquiry()">提交并获取预估</button>
+    <div id="o1"></div>
+  </div>
+
+  <div class="step off" id="s2">
+    <h2>② 两阶段对比</h2>
+    <div id="cmp"></div>
+    <p class="warn">预估报价 ±35% 仅供参考；正式评估需上传固定格式 UTF-8 .txt 附件（支持 plain-v1 / bilingual-v1，见<a href="/api/billing-policy" target="_blank">计费口径</a>）。</p>
+  </div>
+
+  <div class="step off" id="s3">
+    <h2>③ 上传受限附件（阶段二）</h2>
+    <label>文件名（须为 .txt）</label><input id="fname" value="source.txt">
+    <label>内容（UTF-8 文本；双语文档首行 #format: bilingual-v1，段行以 SRC&gt; / TGT&gt; 开头）</label>
+    <textarea id="fcontent" placeholder="粘贴源文，或选择文件："></textarea>
+    <input type="file" id="fpick" accept=".txt" style="margin-top:8px">
+    <button class="btn" onclick="upload()">上传附件（生成新版本）</button>
+    <div id="o3"></div>
+  </div>
+
+  <div class="step off" id="s4">
+    <h2>④ 正式报价与客户确认</h2>
+    <p class="warn">演示环境：正式报价由译者出具。请在下方输入译者管理 token（默认 dev-admin-token）模拟译者操作；生产环境此步在译者后台完成。</p>
+    <label>译者 token（演示）</label><input id="admintoken" class="token" placeholder="dev-admin-token">
+    <button class="btn gray" onclick="issueFormal()">译者：基于当前附件出具正式报价</button>
+    <button class="btn gray" onclick="refresh()">刷新报价列表</button>
+    <div id="quotes"></div>
+    <div id="o4"></div>
+  </div>
+
+  <div class="step off" id="s5">
+    <h2>⑤ 取消委托（留存策略演示）</h2>
+    <p class="warn">取消后附件进入 30 天留存期，到期由清除任务真实删除文件并留存可验证的哈希凭证（tombstone），而非只删列表项。</p>
+    <button class="btn red" onclick="cancelInquiry()">取消委托</button>
+    <div id="o5"></div>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let inquiry = JSON.parse(localStorage.getItem('inquiry') || 'null');
+
+async function api(p, { method='GET', headers={}, body } = {}) {
+  const res = await fetch(p, { method, headers: { 'content-type': 'application/json', ...headers },
+    body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
+const show = (sel, obj, isErr) => { $(sel).className = 'out' + (isErr ? ' err' : ''); $(sel).textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2); };
+const ch = () => ({ 'x-client-token': inquiry.client_token });
+
+async function createInquiry() {
+  const { status, data } = await api('/api/inquiries', { method: 'POST', body: {
+    client_email: $('#email').value, lang_pair: $('#pair').value, domain: $('#domain').value,
+    confidentiality: $('#conf').value, declared_units: +$('#units').value, summary: $('#summary').value } });
+  if (status !== 201) return show('#o1', data, true);
+  inquiry = data; localStorage.setItem('inquiry', JSON.stringify(inquiry));
+  const est = await api(`/api/inquiries/${inquiry.id}/estimate`, { method: 'POST', headers: ch() });
+  show('#o1', `委托 #${inquiry.id} 已创建。\n客户凭证（请保存，用于后续操作）：\n${inquiry.client_token}\n\n` +
+    (est.status === 201 ? `预估报价 #${est.data.id}（v${est.data.version}）：¥${est.data.amount}，准确度 ±${est.data.accuracy_band*100}%` : JSON.stringify(est.data)));
+  ['#s2','#s3','#s4','#s5'].forEach(s => $(s).classList.remove('off'));
+  loadCmp(); refresh();
+}
+async function loadCmp() {
+  const c = await (await fetch('/api/quote-stages')).json();
+  $('#cmp').innerHTML = `<table><tr><th></th><th>${c.estimate.name}</th><th>${c.formal.name}</th></tr>` +
+    ['input','accuracy','confidentiality','storage_cost'].map(k =>
+      `<tr><th>${{input:'输入',accuracy:'估算准确度',confidentiality:'保密性',storage_cost:'存储成本'}[k]}</th><td>${c.estimate[k]}</td><td>${c.formal[k]}</td></tr>`).join('') + '</table>';
+}
+$('#fpick').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('#fname').value = f.name;
+  f.text().then(t => $('#fcontent').value = t);
+});
+async function upload() {
+  const { status, data } = await api(`/api/inquiries/${inquiry.id}/attachments`, { method: 'POST', headers: ch(),
+    body: { filename: $('#fname').value, content: $('#fcontent').value } });
+  show('#o3', status === 201
+    ? `附件 v${data.version} 已上传：格式 ${data.format}，源文 ${data.source_units} 单位 / 译文 ${data.target_units} 单位，计费 ${data.billable_units} 单位（sha256 ${data.sha256.slice(0,16)}…）\n注意：附件修订后，此前出具的正式报价自动失效（stale），需重新评估。`
+    : data, status !== 201);
+  refresh();
+}
+async function issueFormal() {
+  const { status, data } = await api(`/api/admin/inquiries/${inquiry.id}/formal-quote`, { method: 'POST',
+    headers: { 'x-admin-token': $('#admintoken').value } });
+  show('#o4', status === 201 ? `正式报价 #${data.id}（v${data.version}）已出具：¥${data.amount}，基于附件 v${data.attachment_version}，准确度 ±${data.accuracy_band*100}%` : data, status !== 201);
+  refresh();
+}
+async function refresh() {
+  if (!inquiry) return;
+  const { data } = await api(`/api/inquiries/${inquiry.id}`, { headers: ch() });
+  if (!data.quotes) return;
+  $('#quotes').innerHTML = '<table><tr><th>报价</th><th>类型</th><th>计费单位</th><th>金额</th><th>状态</th><th>操作</th></tr>' +
+    data.quotes.map(q => `<tr><td>#${q.id} v${q.version}</td><td>${q.type === 'estimate' ? '预估' : '正式'}${q.attachment_version ? ' (附件v'+q.attachment_version+')' : ''}</td>
+      <td>${q.units}</td><td>¥${q.amount}</td><td>${q.status}</td>
+      <td>${q.status === 'sent' ? `<button class="btn" style="margin:0;padding:5px 12px" onclick="approve(${q.id},${q.version})">确认 v${q.version}</button>` : ''}</td></tr>`).join('') + '</table>' +
+    `<p class="warn">存储占用：${data.storage_bytes} 字节（含历史附件版本，取消后留存期结束即清除）</p>`;
+}
+async function approve(id, version) {
+  const { status, data } = await api(`/api/quotes/${id}/approve`, { method: 'POST', headers: ch(), body: { version } });
+  show('#o4', status === 200 ? `已确认报价 #${id} 的明确版本 v${version}，委托成立。` : data, status !== 200);
+  refresh();
+}
+async function cancelInquiry() {
+  const { status, data } = await api(`/api/inquiries/${inquiry.id}/cancel`, { method: 'POST', headers: ch(), body: {} });
+  show('#o5', status === 200 ? `委托已取消，附件进入留存期（策略 ${'retention-v1'}，30 天），到期可验证删除。` : data, status !== 200);
+}
+if (inquiry) { ['#s2','#s3','#s4','#s5'].forEach(s => $(s).classList.remove('off')); loadCmp(); refresh(); }
+</script>
+</body>
+</html>

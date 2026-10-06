@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>李译然 · 自由译者</title>
+<style>
+  :root { --ink:#1f2933; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink); background:#fafafa; }
+  header { background:#0f766e; color:#fff; padding:40px 24px 32px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  header h1 { margin:0 0 6px; font-size:26px; }
+  header p { margin:0; opacity:.92; }
+  nav { margin-top:14px; }
+  nav a { color:#d1fae5; margin-right:16px; }
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin:22px 0 14px; }
+  select,input { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:14px; }
+  input[type=search] { flex:1; min-width:200px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:12px 0; cursor:pointer; }
+  .card:hover { border-color:var(--accent); }
+  .card h3 { margin:0 0 6px; font-size:17px; }
+  .tags span { display:inline-block; font-size:12px; background:#ecfdf5; color:#047857; border-radius:99px; padding:2px 10px; margin-right:6px; }
+  .meta { color:var(--muted); font-size:13px; margin-top:8px; }
+  .detail { background:#fff; border:1px solid var(--accent); border-radius:12px; padding:20px; margin:14px 0; }
+  .detail h3 { margin-top:0; }
+  .kv { margin:8px 0; } .kv b { color:var(--accent); }
+  .mat { border-left:3px solid var(--accent); background:#f0fdfa; padding:10px 14px; margin:10px 0; border-radius:0 8px 8px 0; }
+  .mat .lic { font-size:12px; color:#047857; }
+  .btn { display:inline-block; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; text-decoration:none; }
+  .empty { color:var(--muted); padding:30px 0; text-align:center; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>李译然 · 自由译者</h1>
+  <p>中 ⇄ 英 ⇄ 日 ｜ 医疗 / 法律 / 市场营销 ｜ 前本地化项目经理，8 年笔译经验</p>
+  <nav><a href="/submit.html">提交项目摘要 →</a><a href="/api/billing-policy" target="_blank">计费口径</a></nav>
+</div></header>
+<main class="wrap">
+  <div class="filters">
+    <select id="fLang"><option value="">全部语言对</option></select>
+    <select id="fDomain"><option value="">全部领域</option></select>
+    <input id="fSearch" type="search" placeholder="搜索公开案例（仅索引公开内容）…">
+  </div>
+  <div id="list"></div>
+  <div id="detail"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DOMAIN = { medical:'医疗', legal:'法律', marketing:'营销', tech:'技术', general:'通用' };
+let cases = [];
+
+async function load() {
+  const q = new URLSearchParams();
+  if ($('#fLang').value) q.set('lang', $('#fLang').value);
+  if ($('#fDomain').value) q.set('domain', $('#fDomain').value);
+  cases = await (await fetch('/api/cases?' + q)).json();
+  render();
+}
+function render() {
+  $('#list').innerHTML = cases.length ? cases.map(c => `
+    <div class="card" onclick="show(${c.id})">
+      <h3>${esc(c.title)}</h3>
+      <div class="tags"><span>${esc(c.lang_pair)}</span><span>${DOMAIN[c.domain]||c.domain}</span></div>
+      <div>${esc(c.summary)}</div>
+      <div class="meta">角色：${esc(c.role)}</div>
+    </div>`).join('') : '<div class="empty">没有符合条件的公开案例</div>';
+}
+async function show(id) {
+  const c = await (await fetch('/api/cases/' + id)).json();
+  $('#detail').innerHTML = `
+    <div class="detail">
+      <h3>${esc(c.title)}</h3>
+      <div class="kv"><b>项目摘要</b>：${esc(c.summary)}</div>
+      <div class="kv"><b>我的真实角色</b>：${esc(c.role)}</div>
+      <div class="kv"><b>项目难点</b>：${esc(c.challenges)}</div>
+      <div class="kv"><b>公开素材</b>（源文 / 译文 / 对照批注许可各自独立）：</div>
+      ${c.materials.length ? c.materials.map(m => `
+        <div class="mat"><div class="lic">${({source:'源文',translation:'译文',annotation:'对照批注'})[m.kind]} · 许可 ${esc(m.license)}</div>${esc(m.content)}</div>`
+      ).join('') : '<div class="meta">本案例仅摘要经授权公开，源文/译文按保密协议管理。</div>'}
+      <p><a class="btn" href="/api/cases/${c.id}/package">下载公开资料包 (JSON)</a></p>
+    </div>`;
+  $('#detail').scrollIntoView({ behavior: 'smooth' });
+}
+let t;
+$('#fSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => {
+  const q = $('#fSearch').value.trim();
+  if (!q) return load();
+  const r = await (await fetch('/api/search?q=' + encodeURIComponent(q))).json();
+  cases = r.results; render();
+}, 250); });
+$('#fLang').addEventListener('change', load);
+$('#fDomain').addEventListener('change', load);
+(async () => {
+  const all = await (await fetch('/api/cases')).json();
+  [...new Set(all.map(c => c.lang_pair))].forEach(v => $('#fLang').insertAdjacentHTML('beforeend', `<option>${v}</option>`));
+  [...new Set(all.map(c => c.domain))].forEach(v => $('#fDomain').insertAdjacentHTML('beforeend', `<option value="${v}">${DOMAIN[v]||v}</option>`));
+  load();
+})();
+</script>
+</body>
+</html>

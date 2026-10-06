@@ -1,0 +1,17 @@
+{
+  "name": "translator-portfolio",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/run.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "自由译者作品站：案例浏览、两阶段报价、素材许可与留存策略",
+  "dependencies": {
+    "express": "^5.2.1",
+    "sql.js": "^1.14.2"
+  }
+}
